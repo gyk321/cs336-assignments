@@ -4,11 +4,13 @@ from tqdm.contrib.concurrent import process_map
 
 PAT = re.compile(r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
 
+# 将目标路径的文本文件以 UTF-8 编码完整读入内存
 def read_text(input_path):
     with open(input_path,"r",encoding = "utf-8") as f:
         text = f.read()
     return text
-# lala
+
+# 使用正则表达式，根据指定的特殊 Token（如 <|endoftext|>）将长文本切分成多个独立的文本块
 def split_by_special(text,special_tokens,drop_special=True):
     if not special_tokens:
         return [text]
@@ -23,15 +25,16 @@ def split_by_special(text,special_tokens,drop_special=True):
     chunks = pattern.split(text)
     return [c for c in chunks if c]
 
+# 将单个字符串转化为单字节 bytes 对象组成的元组
 def word2bytes(word):
     a = list(word.encode('utf-8'))
     return tuple(bytes([i])  for i in a)
 
 def count_word(text):
-    word_cnt = defaultdict(int)
-    for m in PAT.finditer(text):
+    word_cnt = defaultdict(int) 
+    for m in PAT.finditer(text):        # 对传入的文本块进行预分词
         word = m.group(0)
-        word_bytes = word2bytes(word)
+        word_bytes = word2bytes(word)   # 将每个切出来的词通过 word2bytes 转为字节元组
         if len(word_bytes) >= 2:
             word_cnt[word_bytes] += 1
     return word_cnt
@@ -104,25 +107,25 @@ def update_cnt(word_cnt,pair_cnt,merge_pair):
 
 
 def train_bpe(input_path,vocab_size,special_tokens):
-    text = read_text(input_path)
-    chunks = split_by_special(text,special_tokens)
+    text = read_text(input_path)                        # 从指定路径读取完整的训练文本内容
+    chunks = split_by_special(text,special_tokens)      # 将一整块大文本切分成多个独立的文本块
 
-    if len(chunks) < 4 :
-        word_dicts = list(map(count_word,chunks))
+    if len(chunks) < 4 :    # 文本块较少
+        word_dicts = list(map(count_word,chunks))       # 单线程 map 函数逐块处理
     else:
-        word_dicts = process_map(count_word,chunks,chunksize = 1)
+        word_dicts = process_map(count_word,chunks,chunksize = 1)   # 调用 process_map 开启多进程并行处理
 
-    word_cnt = merge_dicts(word_dicts)
-    pair_cnt = count_pair(word_cnt)
+    word_cnt = merge_dicts(word_dicts)                  # 合并成一个全局的词频字典
+    pair_cnt = count_pair(word_cnt)                     # 统计出所有相邻字节对（Pair）的初始出现频次
 
-    vocab = get_basic_vocab(special_tokens)
+    vocab = get_basic_vocab(special_tokens)             # 初始化基础词表
     base_vocab_size = len(vocab)
-    n_merges = vocab_size - base_vocab_size
+    n_merges = vocab_size - base_vocab_size             # 计算迭代次数
 
     merges = []
 
     for i  in range(n_merges):
-        max_pair = get_max_pair(pair_cnt)
+        max_pair = get_max_pair(pair_cnt)               # 从当前的 pair_cnt 中找出出现次数最多的那个字节对
         vocab[base_vocab_size + i] = max_pair[0] + max_pair[1]
         merges.append(max_pair)
         word_cnt,pair_cnt = update_cnt(word_cnt,pair_cnt,max_pair)
