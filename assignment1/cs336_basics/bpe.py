@@ -8,7 +8,7 @@ def read_text(input_path):
     with open(input_path,"r",encoding = "utf-8") as f:
         text = f.read()
     return text
-# 
+# lala
 def split_by_special(text,special_tokens,drop_special=True):
     if not special_tokens:
         return [text]
